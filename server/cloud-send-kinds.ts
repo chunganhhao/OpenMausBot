@@ -246,7 +246,7 @@ const botFieldsSchema = z.object({
   pinned: z.boolean().nullable().optional(),
   chiefOfStaff: z.boolean().nullable().optional(),
   managedSections: z.array(z.string().trim().max(60)).max(100).nullable().optional(),
-  fallback: z.array(z.object({ instanceId: z.string().regex(/^[\w.-]{1,128}$/u), model: z.string().min(1).max(500) })).max(5).nullable().optional(),
+  fallback: z.array(z.object({ instanceId: z.string().regex(/^[\w.-]{1,128}$/u), model: z.string().min(1).max(500) })).max(20).nullable().optional(),
   projects: z.array(z.object({ id: z.string().regex(/^[\w-]{1,128}$/u), name: z.string().min(1).max(80), emoji: z.string().max(16).optional() }).passthrough()).max(200).nullable().optional(),
   playbooks: z.array(playbookSchema).max(50).nullable().optional(),
   installedPackage: z.record(z.string(), z.unknown()).nullable().optional(),

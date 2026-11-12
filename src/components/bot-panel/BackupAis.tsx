@@ -21,7 +21,7 @@ import { buttonCls, Card, ColRow, RowIcon, RowText, TrashButton } from "./rows";
 type Backup = NonNullable<Bot["fallback"]>[number];
 
 /** As many as the server keeps for one bot. */
-export const MAX_BACKUPS = 5;
+export const MAX_BACKUPS = 20;
 
 const NO_SELECTION = { instanceId: "", model: "" };
 /** One model of one account: a bot's backups may share an account, never a model. */

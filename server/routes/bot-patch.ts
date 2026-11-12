@@ -237,14 +237,14 @@ export function createBotPatchRoutes(deps: BotPatchRouteDeps): RouteHandler {
       if (section !== undefined) patch.section = section ?? undefined;
       if (body.chiefOfStaff === false) patch.chiefOfStaff = false;
       if (body.fallback !== undefined) {
-        if (!Array.isArray(body.fallback) || body.fallback.length > 5) {
-          return json(res, 400, { error: "fallback must be a list of up to five { instanceId, model } entries" });
+        if (!Array.isArray(body.fallback) || body.fallback.length > 20) {
+          return json(res, 400, { error: "fallback must be a list of up to 20 { instanceId, model } entries" });
         }
         const chain: Array<{ instanceId: string; model: string }> = [];
         for (const entry of body.fallback as unknown[]) {
           const row = entry && typeof entry === "object" ? (entry as { instanceId?: unknown; model?: unknown }) : null;
           if (!row || typeof row.instanceId !== "string" || !/^[\w.-]+$/.test(row.instanceId) || typeof row.model !== "string" || !row.model.trim() || row.model.length > 500) {
-            return json(res, 400, { error: "fallback must be a list of up to five { instanceId, model } entries" });
+            return json(res, 400, { error: "fallback must be a list of up to 20 { instanceId, model } entries" });
           }
           if (!registry.get(row.instanceId)) return json(res, 400, { error: `fallback engine "${row.instanceId}" is not available` });
           const model = row.model.trim();

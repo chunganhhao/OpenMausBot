@@ -99,7 +99,7 @@ export function FallbackChain({ bot, onChange }: { bot: Bot; onChange: (fallback
   const add = (instanceId: string) => {
     const instance = available.find((candidate) => candidate.instanceId === instanceId);
     const model = instance && freeModel(instance);
-    if (!model || chain.length >= 5) return;
+    if (!model || chain.length >= 20) return;
     onChange([...chain, { instanceId, model }]);
   };
 
@@ -132,7 +132,7 @@ export function FallbackChain({ bot, onChange }: { bot: Bot; onChange: (fallback
           ))}
         </ol>
       )}
-      {chain.length < 5 && (
+      {chain.length < 20 && (
         <div className={cn("flex items-center gap-2", chain.length > 0 ? "mt-2" : "mt-3")}>
           <Select size="sm"
             value=""
