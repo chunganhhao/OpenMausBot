@@ -9,6 +9,8 @@ import { join } from "node:path";
 
 const MAX_RELOAD_ATTEMPTS = 10;
 
+const AIUSAGE_HOLD_EXPR = "(globalThis.__ombAiUsageHold??=(sel,deps,heldModels,nowMs)=>{try{if(!sel?.instanceId||!sel?.model)return null;const engines=deps?.engines?.()??[],eng=engines.find(e=>e.instanceId===sel.instanceId),email=eng?.snapshot?.account?.email?.trim()?.toLowerCase();if(!email)return null;for(const other of engines){if(other.instanceId===sel.instanceId||other.driverKind!==eng.driverKind||other.snapshot?.account?.email?.trim()?.toLowerCase()!==email)continue;const bu=deps?.blockedUntil?.(other.instanceId);if(typeof bu===\"number\"&&bu>nowMs)return{until:bu,resetsAt:bu,scope:\"model\"};for(const[k,v]of heldModels?.entries?.()??[])if(k.startsWith(other.instanceId+\"\\0\")&&v?.until>nowMs&&(v.scope===\"credits\"||k===other.instanceId+\"\\0\"+sel.model))return v}const fs=process.getBuiltinModule(\"node:fs\"),os=process.getBuiltinModule(\"node:os\"),path=process.getBuiltinModule(\"node:path\"),cpaDir=process.env.OMB_AIUSAGE_CPA_DIR||path.join(os.homedir(),\"Library/Application Support/AIUsage/CLIProxyAPI\");let cache=globalThis.__ombAiUsageCache;if(!cache||cache.dir!==cpaDir||nowMs<cache.at||nowMs-cache.at>4999){const byEmail=new Map;let agEnabled=!0;try{agEnabled=JSON.parse(fs.readFileSync(path.join(cpaDir,\"pool-protection.json\"),\"utf8\"))?.enabled!==!1}catch{}const authDir=path.join(cpaDir,\"auth\");if(fs.existsSync(authDir))for(const f of fs.readdirSync(authDir)){if(!f.endsWith(\".json\"))continue;try{const doc=JSON.parse(fs.readFileSync(path.join(authDir,f),\"utf8\")),em=typeof doc?.email===\"string\"?doc.email.trim().toLowerCase():\"\",tp=typeof doc?.type===\"string\"?doc.type.trim().toLowerCase():\"\";if(!em||!tp)continue;const key=tp+\":\"+em,prev=byEmail.get(key),disabled=doc.disabled===!0||doc.disabled===1||doc.circuit_breaker_tripped===!0,pools=new Set([...prev?.pools??[],...Array.isArray(doc.circuit_breaker_pools)?doc.circuit_breaker_pools.map(p=>String(p).toLowerCase()):[]]),excl=[...new Set([...prev?.excl??[],...Array.isArray(doc.excluded_models)?doc.excluded_models.map(m=>String(m).toLowerCase()):[]])];byEmail.set(key,{disabled:prev?prev.disabled&&disabled:disabled,pools,excl})}catch{}}cache=globalThis.__ombAiUsageCache={at:nowMs,dir:cpaDir,byEmail,agEnabled}}const credentialType=eng.driverKind===\"antigravityAgent\"?\"antigravity\":eng.driverKind,rec=cache.byEmail.get(credentialType+\":\"+email);if(!rec)return null;const holdUntil=nowMs+3e5;if(rec.disabled)return{until:holdUntil,resetsAt:holdUntil,scope:\"model\"};if(eng.driverKind===\"antigravityAgent\"&&cache.agEnabled){const m=String(sel.model).toLowerCase(),pool=m.startsWith(\"gemini-4-argon\")||m.includes(\"argon\")?\"argon\":m.startsWith(\"gemini-\")?\"gemini\":m.startsWith(\"claude-\")||m.startsWith(\"gpt-\")?\"claude\":null;if(pool&&rec.pools.has(pool)||rec.excl.some(x=>x===m||x.startsWith(m+\"-\")||x.includes(\"*\")&&new RegExp(\"^\"+x.split(\"*\").map(p=>p.replace(/[|\\\\{}()[\\]^$+?.]/g,c=>\"\\\\\"+c)).join(\".*\")+\"$\").test(m)))return{until:holdUntil,resetsAt:holdUntil,scope:\"model\"}}return null}catch{return null}})";
+
 const RULES = [
   [/(const \w+=)5(,\w+=\{instanceId:"",model:""\})/g, "$120$2"],
   [/(![\w$]+\|\|[\w$]+\.length>=)5(\|\|[\w$]+\(\[\.\.\.[\w$]+,\{instanceId:)/g, "$120$2"],
@@ -18,6 +20,33 @@ const RULES = [
   [/(fallback:\s*(?:z|external_exports)\.array\((?:z|external_exports)\.object\(\{\s*instanceId:[^}]+\}\)\)\.max\()5(\))/g, "$120$2"],
   [/(safe\.startsWith\("\/assets\/"\)\s*\?\s*)"public, max-age=31536000, immutable"/g, '$1"no-cache"'],
   [/\^https\?:\\\/\\\/(github\\\.com|skills\\\.sh)\\\//g, "^https?:\\/\\/(?:www\\.)?$1\\/"],
+  [
+    /function limitBackupAllowed\((\w+),(\w+),(\w+)\)\{return \2\.instanceId===\1\.instanceId\?!1:\2\.driverKind!==\1\.driverKind\|\|!SUBSCRIPTION_DRIVERS\.has\(\1\.driverKind\)\?!0:billsEachUse\(\3\)\}/g,
+    "function limitBackupAllowed($1,$2,$3){return $2.instanceId!==$1.instanceId}",
+  ],
+  [
+    /export function limitBackupAllowed\(from, to, toConfig\) \{\s*if \(to\.instanceId === from\.instanceId\)\s*return false;\s*if \(to\.driverKind !== from\.driverKind \|\| !SUBSCRIPTION_DRIVERS\.has\(from\.driverKind\)\)\s*return true;\s*return billsEachUse\(toConfig\);\s*\}/g,
+    "export function limitBackupAllowed(from, to, toConfig) {\n    return to.instanceId !== from.instanceId;\n}",
+  ],
+  [
+    /;\(scope==="model"\|\|scope==="credits"\)&&(\w+)\(\{instanceId:(\w+)\.instanceId,model:\2\.models\.default\}\);for\(let (\w+) of scope==="signed-out"\?deps\.signedOutChosen\?\.\(botId\)\?\?deps\.chosen\(botId\):deps\.chosen\(botId\)\)\1\(\3\);/g,
+    ';for(let $3 of scope==="signed-out"?deps.signedOutChosen?.(botId)??deps.chosen(botId):deps.chosen(botId))$1($3);(scope==="model"||scope==="credits")&&$1({instanceId:$2.instanceId,model:$2.models.default});',
+  ],
+  [
+    /if \(scope === "model" \|\| scope === "credits"\)\s*add\(\{ instanceId: current\.instanceId, model: current\.models\.default \}\);\s*for \(const selection of scope === "signed-out" \? deps\.signedOutChosen\?\.\(botId\) \?\? deps\.chosen\(botId\) : deps\.chosen\(botId\)\)\s*add\(selection\);/g,
+    'for (const selection of scope === "signed-out" ? deps.signedOutChosen?.(botId) ?? deps.chosen(botId) : deps.chosen(botId))\n            add(selection);\n        if (scope === "model" || scope === "credits")\n            add({ instanceId: current.instanceId, model: current.models.default });',
+  ],
+  [/(let full=windows\.filter\(\w+=>\w+\.used>=)100(\);)/g, "$199$2"],
+  [/(const full = windows\.filter\(\(line\) => line\.used >= )100(\);)/g, "$199$2"],
+  [
+    /modelHeld=(\w+)=>\{let (\w+)=heldModels\.get\(modelKey\(\1\)\);return \2\?\2\.until>(\w+)\(\)\?\2:\(heldModels\.delete\(modelKey\(\1\)\),(\w+)\(\),null\):null\}/g,
+    `modelHeld=$1=>{let $2=heldModels.get(modelKey($1));if($2){if($2.until>$3())return $2;heldModels.delete(modelKey($1)),$4()}return ${AIUSAGE_HOLD_EXPR}($1,deps,heldModels,$3())}`,
+  ],
+  [
+    /const modelHeld = \(selection\) => \{\s*const held = heldModels\.get\(modelKey\(selection\)\);\s*if \(!held\)\s*return null;\s*if \(held\.until > now\(\)\)\s*return held;\s*heldModels\.delete\(modelKey\(selection\)\);\s*save\(\);\s*return null;\s*\};/g,
+    `const modelHeld = (selection) => {\n        const held = heldModels.get(modelKey(selection));\n        if (held) {\n            if (held.until > now())\n                return held;\n            heldModels.delete(modelKey(selection));\n            save();\n        }\n        return ${AIUSAGE_HOLD_EXPR}(selection, deps, heldModels, now());\n    };`,
+  ],
+  [/\(globalThis\.__ombAiUsageHold\?\?=\(sel,deps,heldModels,nowMs\)=>\{[\s\S]*?catch\{return null\}\}\)/g, () => AIUSAGE_HOLD_EXPR],
 ];
 
 export function applyRules(text) {
@@ -66,6 +95,9 @@ export function runPatcher({
     join(resDir, "server/server/cloud-send-kinds.js"),
     join(resDir, "server/server/static-files.js"),
     join(resDir, "server/server/skill-fetch.js"),
+    join(resDir, "server/server/limit-failover.js"),
+    join(resDir, "server/server/limit-resets.js"),
+    join(resDir, "server/server/host/limit-takeover.js"),
     ...(fsOps.existsSync(uiAssets)
       ? fsOps.readdirSync(uiAssets)
           .filter((f) => /^(BotSettingsDialog|VisibilitySection)-.*\.js$/.test(f))
@@ -147,14 +179,39 @@ export function runSelfTest() {
     'safe.startsWith("/assets/")?"public, max-age=31536000, immutable":null',
     'const tree = github.match(/^https?:\\/\\/github\\.com\\/([^/]+)\\/([^/]+?)$/i);',
     'const registry = text.match(/^https?:\\/\\/skills\\.sh\\/([\\w.-]+)\\/([\\w.-]+)(?:\\/([\\w.-]+))?\\/?$/i);',
+    'function limitBackupAllowed(from,to2,toConfig){return to2.instanceId===from.instanceId?!1:to2.driverKind!==from.driverKind||!SUBSCRIPTION_DRIVERS.has(from.driverKind)?!0:billsEachUse(toConfig)}',
+    'export function limitBackupAllowed(from, to, toConfig) {\n    if (to.instanceId === from.instanceId)\n        return false;\n    if (to.driverKind !== from.driverKind || !SUBSCRIPTION_DRIVERS.has(from.driverKind))\n        return true;\n    return billsEachUse(toConfig);\n}',
+    ';(scope==="model"||scope==="credits")&&add11({instanceId:current3.instanceId,model:current3.models.default});for(let selection3 of scope==="signed-out"?deps.signedOutChosen?.(botId)??deps.chosen(botId):deps.chosen(botId))add11(selection3);',
+    'let full=windows.filter(line6=>line6.used>=100);',
+    'const full = windows.filter((line) => line.used >= 100);',
+    'modelHeld=selection3=>{let held4=heldModels.get(modelKey(selection3));return held4?held4.until>now2()?held4:(heldModels.delete(modelKey(selection3)),save7(),null):null}',
   ].join("\n");
   const out = applyRules(sample);
   assert(!out.includes("=5,") && !out.includes(">=5") && !out.includes("<5") && !out.includes(">5") && !out.includes("max(5)") && !out.includes("immutable"));
   assert(out.includes("(?:www\\.)?github\\.com") && out.includes("(?:www\\.)?skills\\.sh"));
+  assert(out.includes("function limitBackupAllowed(from,to2,toConfig){return to2.instanceId!==from.instanceId}"));
+  assert(out.includes("return to.instanceId !== from.instanceId;"));
+  assert(out.includes("line6.used>=99") && out.includes("line.used >= 99"));
+  assert(out.includes("__ombAiUsageHold"));
   assert.equal(applyRules(out), out, "must be idempotent");
   assert.equal(isCliEntry([]), false, "import with empty argv must not match CLI entry");
   assert.equal(isCliEntry(["node", "/Users/apple/Downloads/Repo Github/review-openmausbot-watchdog.cjs"]), false, "import from harness must not match CLI entry");
   assert.equal(isCliEntry(["node", "/Users/apple/.openmausbot/patch-fallback-20.mjs"]), true, "direct execution must match CLI entry");
+
+  // Verify AIUsage hold + same-email sibling hold behavior in memory
+  const holdFn = (0, eval)(AIUSAGE_HOLD_EXPR);
+  const fakeEngines = [
+    { instanceId: "codex", driverKind: "codex", snapshot: { account: { email: "nhntrong592@gmail.com" } } },
+    { instanceId: "chatgpt", driverKind: "codex", snapshot: { account: { email: "nhntrong592@gmail.com" } } },
+    { instanceId: "chatgpt-2", driverKind: "codex", snapshot: { account: { email: "chunganhhao03121996@gmail.com" } } },
+  ];
+  const siblingHold = holdFn(
+    { instanceId: "chatgpt", model: "gpt-6" },
+    { engines: () => fakeEngines, blockedUntil: (id) => (id === "codex" ? 200000 : null) },
+    new Map(),
+    100000,
+  );
+  assert.deepEqual(siblingHold, { until: 200000, resetsAt: 200000, scope: "model" }, "same-email sibling engine block must propagate");
 
   const mem = new Map([
     ["/Applications/OpenMausBot.app/Contents/Resources/server/index.js", 'if(body3.fallback.length>5)return "fallback must be a list of up to five { instanceId, model } entries";'],
