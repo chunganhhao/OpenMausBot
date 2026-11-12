@@ -1480,6 +1480,12 @@ describe("parseSkillSource", () => {
       rawUrl: "https://raw.githubusercontent.com/o/r/main/skills/tdd/SKILL.md",
     });
     expect(parseSkillSource("https://skills.sh/vercel-labs/skills")).toMatchObject({ owner: "vercel-labs", repo: "skills" });
+    expect(parseSkillSource("https://www.skills.sh/vercel-labs/skills/find-skills")).toMatchObject({
+      owner: "vercel-labs",
+      repo: "skills",
+      skill: "find-skills",
+    });
+    expect(parseSkillSource("https://www.github.com/anthropics/skills")).toMatchObject({ owner: "anthropics", repo: "skills" });
     expect(parseSkillSource("https://skills.sh/vercel-labs/skills/find-skills")).toMatchObject({
       owner: "vercel-labs",
       repo: "skills",

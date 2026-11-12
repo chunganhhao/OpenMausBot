@@ -106,15 +106,15 @@ export function parseSkillSource(input: string): Target | { error: string } {
     return target(raw[2]!, raw[3]!, parts[named - 1], parts.slice(named).join("/"), { rawUrl: text });
   }
   const github = text.replace(/[?#].*$/, "");
-  const blob = github.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/((?:.*\/)?)SKILL\.md$/i);
+  const blob = github.match(/^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/((?:.*\/)?)SKILL\.md$/i);
   if (blob) {
     return target(blob[1]!, blob[2]!, blob[3]!, blob[4]!, {
       rawUrl: `https://raw.githubusercontent.com/${blob[1]}/${blob[2]}/${blob[3]}/${blob[4]}SKILL.md`,
     });
   }
-  const tree = github.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/tree\/([^/]+)(?:\/(.*))?)?\/?$/i);
+  const tree = github.match(/^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/tree\/([^/]+)(?:\/(.*))?)?\/?$/i);
   if (tree) return target(tree[1]!, tree[2]!, tree[3], tree[4] ?? "");
-  const registry = text.match(/^https?:\/\/skills\.sh\/([\w.-]+)\/([\w.-]+)(?:\/([\w.-]+))?\/?$/i);
+  const registry = text.match(/^https?:\/\/(?:www\.)?skills\.sh\/([\w.-]+)\/([\w.-]+)(?:\/([\w.-]+))?\/?$/i);
   if (registry) {
     if ([registry[1], registry[2]].some((part) => part === "." || part === "..") ||
       (registry[3] && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(registry[3]))) {
